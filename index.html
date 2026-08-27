@@ -39,7 +39,11 @@
     <button id="installChip" class="icon" hidden>설치</button>
     <button id="sensBtn" class="icon">감도</button>
     <span id="lockBadge" class="badge" hidden>화면 유지</span>
-    <button id="editBtn" class="icon">편집</button>
+    <button id="editBtn" class="icon only" aria-label="음역대 편집">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 20h4L20 8l-4-4L4 16v4Z"/><path d="M14 6l4 4"/>
+      </svg>
+    </button>
   </header>
 
   <section id="readout">
@@ -146,6 +150,8 @@
         <button id="newBtn" class="ghost small">새로 만들기</button>
       </div>
       <ul id="savedList"></ul>
+      <p id="sortHint" class="hint" hidden>손잡이를 끌어 순서를 바꿉니다. 이 순서대로 차트
+        오른쪽 막대와 아래 범례에 놓이고 색도 따라갑니다.</p>
     </div>
   </div>
 </div>

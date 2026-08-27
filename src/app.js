@@ -127,7 +127,7 @@ const dom = {
   sheet: el('sheet'), sheetTitle: el('sheetTitle'), fName: el('fName'),
   fLow: el('fLow'), fHigh: el('fHigh'), fGuides: el('fGuides'), fClamp: el('fClamp'),
   captureBtn: el('captureBtn'), saveBtn: el('saveBtn'), deleteBtn: el('deleteBtn'),
-  newBtn: el('newBtn'), savedList: el('savedList'),
+  newBtn: el('newBtn'), savedList: el('savedList'), sortHint: el('sortHint'),
   sensSection: el('sensSection'), fSens: el('fSens'), sensValue: el('sensValue'),
   sensThresh: el('sensThresh'), levelBar: el('levelBar'), levelMark: el('levelMark'),
   levelText: el('levelText'),
@@ -340,7 +340,9 @@ function renderSensitivity() {
   if (dom.fSens.value !== String(sensitivity)) dom.fSens.value = String(sensitivity);
   dom.sensValue.textContent = String(sensitivity);
   // 기본값에서 벗어나 있을 때만 머리말 칩에 숫자를 붙인다. 손댄 적이 있다는 표시다.
-  dom.sensBtn.textContent = sensitivity === DEFAULT_SENSITIVITY ? '감도' : `감도 ${sensitivity}`;
+  // 좁은 화면에서는 이 숫자를 CSS 가 감춘다. 값은 정수로 잘라 둔 상태라 그대로 넣어도 된다.
+  dom.sensBtn.innerHTML =
+    sensitivity === DEFAULT_SENSITIVITY ? '감도' : `감도<span class="num">${sensitivity}</span>`;
   dom.sensThresh.textContent = `문턱 ${Math.round(dbOf(gate.rms))} dB`;
   dom.levelMark.style.left = meterPct(gate.rms) + '%';
   renderLevel();
@@ -476,17 +478,104 @@ function renderEditor() {
   dom.fClamp.checked = !!editing.id && clampId === editing.id;
 }
 
+const HANDLE_ICON =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9h12M6 15h12"/></svg>';
+
 function renderSavedList() {
+  // 하나뿐이면 옮길 데가 없으니 손잡이도 내보내지 않는다.
+  const sortable = singers.length > 1;
+  dom.sortHint.hidden = !sortable;
+
   if (singers.length === 0) {
     dom.savedList.innerHTML = '<li class="empty">아직 저장된 음역대가 없습니다.</li>';
     return;
   }
   dom.savedList.innerHTML = singers.map((s, i) => `
-    <li><button data-edit="${s.id}">
-      <span class="swatch" style="background:${colorFor(i)}"></span>
-      <span class="nm">${escapeHtml(s.name)}</span>
-      <span class="rg">${noteLabel(s.low)} – ${noteLabel(s.high)}</span>
-    </button></li>`).join('');
+    <li data-id="${s.id}">
+      <button class="row" data-edit="${s.id}">
+        <span class="swatch" style="background:${colorFor(i)}"></span>
+        <span class="nm">${escapeHtml(s.name)}</span>
+        <span class="rg">${noteLabel(s.low)} – ${noteLabel(s.high)}</span>
+      </button>
+      ${sortable ? `<button class="handle" data-handle="${s.id}"
+        aria-label="${escapeHtml(s.name)} 순서 바꾸기">${HANDLE_ICON}</button>` : ''}
+    </li>`).join('');
+}
+
+/* ---------------------------------------------------- 저장 목록 순서 바꾸기 */
+
+/*
+ * 손잡이를 끌어 순서를 바꾼다. HTML5 드래그는 터치에서 아예 동작하지 않으므로
+ * 포인터 이벤트로 직접 옮긴다. 끄는 동안 실제 목록은 건드리지 않고 transform 으로만
+ * 밀어 두었다가, 손을 뗄 때 한 번 적용한다.
+ */
+const reorder = { id: null, pointerId: null, from: -1, to: -1, startY: 0, rows: [] };
+
+function beginReorder(handle, event) {
+  const li = handle.closest('li');
+  const from = singers.findIndex((s) => s.id === li.dataset.id);
+  if (from < 0) return;
+
+  const rows = [...dom.savedList.children].map((element) => {
+    const rect = element.getBoundingClientRect();
+    return { element, center: rect.top + rect.height / 2, height: rect.height };
+  });
+
+  try { handle.setPointerCapture(event.pointerId); } catch { /* 무시 */ }
+  reorder.id = li.dataset.id;
+  reorder.pointerId = event.pointerId;
+  reorder.from = from;
+  reorder.to = from;
+  reorder.startY = event.clientY;
+  reorder.rows = rows;
+  li.classList.add('dragging');
+}
+
+function moveReorder(clientY) {
+  const { rows, from } = reorder;
+  const offset = clientY - reorder.startY;
+  rows[from].element.style.transform = `translateY(${offset}px)`;
+
+  // 끌고 있는 줄의 한가운데보다 위에 있는 줄의 수가 곧 새 자리다.
+  const center = rows[from].center + offset;
+  let to = 0;
+  rows.forEach((row, k) => { if (k !== from && center > row.center) to++; });
+  if (to === reorder.to) return;
+
+  reorder.to = to;
+  const height = rows[from].height;
+  rows.forEach((row, k) => {
+    if (k === from) return;
+    let shift = 0;
+    if (k < from && k >= to) shift = height;
+    else if (k > from && k <= to) shift = -height;
+    row.element.style.transform = shift ? `translateY(${shift}px)` : '';
+  });
+}
+
+function endReorder(commit) {
+  if (reorder.id === null) return;
+  const { from, to } = reorder;
+  for (const row of reorder.rows) {
+    row.element.style.transform = '';
+    row.element.classList.remove('dragging');
+  }
+  reorder.id = null;
+  reorder.pointerId = null;
+  reorder.rows = [];
+  if (commit && to !== from) moveSinger(from, to);
+  else renderSavedList();
+}
+
+function moveSinger(from, to) {
+  const target = clamp(to, 0, singers.length - 1);
+  if (from === target) return;
+  const [moved] = singers.splice(from, 1);
+  singers.splice(target, 0, moved);
+  saveSingers(singers);
+  refreshChartData();   // 순서가 곧 차트 막대 자리와 색이다
+  renderLegend();
+  renderSavedList();
 }
 
 function stepNote(which, delta) {
@@ -622,6 +711,45 @@ dom.sheet.addEventListener('click', (event) => {
     const entry = singers.find((s) => s.id === target.dataset.edit);
     if (entry) openSheet(entry);
   }
+});
+
+dom.savedList.addEventListener('pointerdown', (event) => {
+  const handle = event.target.closest('[data-handle]');
+  if (!handle || reorder.id !== null) return;
+  event.preventDefault();   // 손잡이에서는 길게 누르기·선택이 끼어들지 않게 한다
+  beginReorder(handle, event);
+});
+
+dom.savedList.addEventListener('pointermove', (event) => {
+  if (reorder.pointerId !== event.pointerId) return;
+  event.preventDefault();
+  moveReorder(event.clientY);
+});
+
+for (const type of ['pointerup', 'pointercancel']) {
+  dom.savedList.addEventListener(type, (event) => {
+    if (reorder.pointerId !== event.pointerId) return;
+    endReorder(type === 'pointerup');
+  });
+  // 포인터를 붙잡지 못한 브라우저에서 목록 밖에서 손을 떼면 여기로 온다. 되돌린다.
+  window.addEventListener(type, (event) => {
+    if (reorder.pointerId === event.pointerId) endReorder(false);
+  });
+}
+
+// 끌기가 어려운 상황(키보드, 보조기기)을 위한 같은 동작.
+dom.savedList.addEventListener('keydown', (event) => {
+  const handle = event.target.closest('[data-handle]');
+  if (!handle) return;
+  const delta = event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0;
+  if (!delta) return;
+  event.preventDefault();
+  const id = handle.dataset.handle;
+  const from = singers.findIndex((s) => s.id === id);
+  if (from < 0) return;
+  moveSinger(from, from + delta);
+  const next = dom.savedList.querySelector(`[data-handle="${id}"]`);
+  if (next) next.focus();
 });
 
 dom.captureBtn.addEventListener('click', () => {
