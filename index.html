@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#000000">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="목소리의 음을 실시간으로 보여주고 음역대를 기록하는 웹앱">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="renu">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<link rel="stylesheet" href="./src/styles.css">
+<title>renu · 음역대</title>
+</head>
+<body>
+
+<!-- 마이크는 사용자 제스처가 있어야 열린다 -->
+<div id="gate">
+  <div class="gate-inner">
+    <div class="logo" aria-hidden="true"></div>
+    <h1>renu</h1>
+    <p class="tagline">목소리의 음을 읽고, 음역대를 남긴다</p>
+    <button id="startBtn" class="primary">마이크 켜기</button>
+    <p id="gateHint" class="hint">마이크 권한이 필요합니다. 소리는 기기 밖으로 나가지 않습니다.</p>
+    <button id="installBtn" class="ghost" hidden>홈 화면에 설치</button>
+  </div>
+</div>
+
+<main id="app" hidden>
+  <header>
+    <button id="micBtn" class="icon" aria-label="마이크 켜기/끄기" aria-pressed="true">
+      <span class="mic-dot"></span><span id="micLabel">듣는 중</span>
+    </button>
+    <div class="spacer"></div>
+    <button id="installChip" class="icon" hidden>설치</button>
+    <span id="lockBadge" class="badge" hidden>화면 유지</span>
+    <button id="editBtn" class="icon">편집</button>
+  </header>
+
+  <section id="readout">
+    <div id="noteBig" class="idle">
+      <span id="noteName">–</span><span id="noteOct"></span>
+    </div>
+    <div id="centsRow">
+      <div id="centsMeter" role="img" aria-label="음정 편차">
+        <div class="tick left"></div>
+        <div class="tick center"></div>
+        <div class="tick right"></div>
+        <div id="centsBar"></div>
+      </div>
+      <div id="centsText">—</div>
+    </div>
+    <div id="freqText">—</div>
+  </section>
+
+  <section id="chart">
+    <canvas id="history" aria-label="시간에 따른 음 높이"></canvas>
+  </section>
+
+  <div id="legend"></div>
+</main>
+
+<!-- 편집 시트 -->
+<div id="sheet" hidden>
+  <div class="sheet-scrim" data-close></div>
+  <div class="sheet-body" role="dialog" aria-modal="true" aria-label="음역대 편집">
+    <div class="sheet-head">
+      <h2 id="sheetTitle">음역대 편집</h2>
+      <button class="icon" data-close>닫기</button>
+    </div>
+
+    <label class="field">
+      <span>이름</span>
+      <input id="fName" type="text" placeholder="예: 아무개" autocomplete="off" spellcheck="false" maxlength="24">
+    </label>
+
+    <div class="note-fields">
+      <div class="note-field">
+        <span class="lbl">최저음</span>
+        <div class="stepper">
+          <button data-step="low:-1" aria-label="최저음 반음 내리기">−</button>
+          <b id="fLow">C3</b>
+          <button data-step="low:1" aria-label="최저음 반음 올리기">+</button>
+        </div>
+        <button class="ghost small" data-now="low">지금 음</button>
+      </div>
+      <div class="note-field">
+        <span class="lbl">최고음</span>
+        <div class="stepper">
+          <button data-step="high:-1" aria-label="최고음 반음 내리기">−</button>
+          <b id="fHigh">C5</b>
+          <button data-step="high:1" aria-label="최고음 반음 올리기">+</button>
+        </div>
+        <button class="ghost small" data-now="high">지금 음</button>
+      </div>
+    </div>
+
+    <button id="captureBtn" class="ghost wide">노래해서 잡기</button>
+    <p id="captureHint" class="hint">켜면 지금부터 내는 음의 최저·최고를 계속 넓혀서 담습니다.</p>
+
+    <label class="toggle">
+      <input id="fClamp" type="checkbox">
+      <span>이 음역대를 기준으로 삼고, 벗어난 소리는 무시</span>
+    </label>
+
+    <div class="section-label">표시</div>
+
+    <label class="toggle">
+      <input id="fGuides" type="checkbox">
+      <span>남성·여성 일반 음역대를 흐리게 항상 표시</span>
+    </label>
+
+    <div class="sheet-actions">
+      <button id="deleteBtn" class="danger" hidden>삭제</button>
+      <button id="saveBtn" class="primary">저장</button>
+    </div>
+
+    <div class="saved">
+      <div class="saved-head">
+        <h3>저장된 음역대</h3>
+        <button id="newBtn" class="ghost small">새로 만들기</button>
+      </div>
+      <ul id="savedList"></ul>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="./src/app.js"></script>
+</body>
+</html>
