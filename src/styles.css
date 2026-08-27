@@ -130,7 +130,13 @@ header {
   padding: 10px 14px;
   border-bottom: 1px solid var(--line-soft);
   flex: none;
+  /* 칩이 다 못 들어가는 좁은 화면에서는 눌려서 글자가 깨지는 대신 옆으로 밀린다. */
+  overflow-x: auto;
+  scrollbar-width: none;
+  touch-action: pan-x;
 }
+header::-webkit-scrollbar { display: none; }
+header > .icon, header > .badge { flex: none; }
 .spacer { flex: 1; }
 .icon {
   display: inline-flex;
@@ -141,6 +147,7 @@ header {
   border: 1px solid var(--line);
   color: var(--text-dim);
   font-size: 13px;
+  white-space: nowrap;
 }
 .mic-dot {
   width: 7px; height: 7px;
@@ -149,7 +156,21 @@ header {
 }
 #micBtn[aria-pressed="false"] .mic-dot { background: var(--text-faint); }
 #micBtn[aria-pressed="false"] { color: var(--text-faint); }
-.badge { font-size: 11px; color: var(--text-faint); border: 1px solid var(--line-soft); padding: 5px 8px; border-radius: 7px; }
+.badge {
+  font-size: 11px;
+  color: var(--text-faint);
+  border: 1px solid var(--line-soft);
+  padding: 5px 8px;
+  border-radius: 7px;
+  white-space: nowrap;
+}
+
+/* 좁은 화면에서 칩이 다 들어가도록 여백만 줄인다. 감도·설치까지 함께 뜨면 빠듯하다. */
+@media (max-width: 360px) {
+  header { gap: 6px; padding: 10px 10px; }
+  .icon { padding: 7px 9px; gap: 5px; }
+  .badge { padding: 5px 6px; }
+}
 
 /* ---------- 현재 음 ---------- */
 
@@ -338,6 +359,89 @@ header {
 }
 .toggle input:checked { border-color: var(--accent-dim); }
 .toggle input:checked::after { background: var(--accent); transform: translateX(16px); }
+
+/* ---------- 감도 ---------- */
+
+.range-field { margin-bottom: 22px; }
+.range-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.range-head b {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * touch-action 을 여기서 다시 none 으로 둔다. 시트가 세로 스크롤(pan-y)을 받고 있어서
+ * 그대로 두면 손가락을 슬라이더 위에서 움직일 때 스크롤에 끌려간다.
+ */
+#fSens {
+  appearance: none;
+  -webkit-appearance: none;
+  display: block;
+  width: 100%;
+  height: 30px;
+  margin: 2px 0 0;
+  background: none;
+  touch-action: none;
+}
+#fSens:focus { outline: none; }
+#fSens::-webkit-slider-runnable-track { height: 2px; background: var(--line); border-radius: 2px; }
+#fSens::-moz-range-track { height: 2px; background: var(--line); border-radius: 2px; }
+#fSens::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 22px; height: 22px;
+  margin-top: -10px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+}
+#fSens::-moz-range-thumb {
+  width: 22px; height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+#levelMeter {
+  position: relative;
+  height: 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #000;
+}
+#levelBar {
+  position: absolute;
+  top: 0; bottom: 0; left: 0;
+  width: 0;
+  border-radius: 3px 0 0 3px;
+  background: var(--text-faint);
+}
+#levelBar.over { background: var(--accent); }
+/* 문턱 눈금. 막대가 여기를 넘어야 소리로 인정된다. */
+#levelMark {
+  position: absolute;
+  top: -4px; bottom: -4px;
+  left: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--text);
+}
+.range-readout {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 9px;
+  font-size: 11px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.range-field .hint { margin-top: 10px; }
 
 .section-label {
   margin: 22px 0 12px;

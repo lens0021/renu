@@ -4,6 +4,7 @@ import { freqToMidi, noteLabel, splitNote } from './notes.js';
 import {
   loadSingers, saveSingers, loadShowGuides, saveShowGuides,
   loadClampId, saveClampId, loadView, saveView, newId, colorFor,
+  loadSensitivity, saveSensitivity, DEFAULT_SENSITIVITY,
 } from './store.js';
 
 /* ------------------------------------------------------------------ 상수 */
@@ -21,13 +22,23 @@ const DETECT_MAX = 3000;
 const BUFFER_SIZE = 8192;   // 48 kHz 기준 약 170 ms
 const UPDATE_MS = 50;       // 초당 20 회
 const HISTORY_SECONDS = 8;
-const CLARITY_MIN = 0.75;
-const RMS_MIN = 0.003;
 const IDLE_MS = 350;        // 이만큼 못 잡으면 표시를 비운다
 const HOLD_MS = 200;        // 이만큼 유지된 음만 음역대로 인정한다.
                             // 분석 창(약 170 ms)과 스무딩 지연이 앞에 더 붙으므로,
                             // 실제로는 0.5 초쯤 낸 음이 기록된다.
 const IN_TUNE_CENTS = 10;
+
+// 소리를 음으로 인정하는 문턱 두 개를 감도 하나로 함께 움직인다. 감도 0 은 둔감해서 큰
+// 소리만, 100 은 예민해서 작게 불러도 잡는다. 기본값 50 이 예전에 상수로 박혀 있던
+// 0.003 / 0.75 를 그대로 만들어 낸다. 크기는 로그로, 명료도는 선형으로 나눈다.
+const RMS_AT_DULL = 0.02;      // 감도 0   · 약 -34 dBFS
+const RMS_AT_KEEN = 0.00045;   // 감도 100 · 약 -67 dBFS
+const CLARITY_AT_DULL = 0.90;
+const CLARITY_AT_KEEN = 0.60;
+
+// 입력 크기 막대가 덮는 범위(dBFS)
+const METER_MIN_DB = -72;
+const METER_MAX_DB = -12;
 
 // 성악에서 흔히 쓰는 성종별 범위를 합친 값이다.
 // 남성 = 베이스 E2 부터 테너 C5 까지, 여성 = 콘트랄토 F3 부터 소프라노 C6 까지.
@@ -95,13 +106,21 @@ function average(list) {
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const el = (id) => document.getElementById(id);
 
+const rmsMinFor = (sens) => RMS_AT_DULL * Math.pow(RMS_AT_KEEN / RMS_AT_DULL, sens / 100);
+const clarityMinFor = (sens) => CLARITY_AT_DULL + (CLARITY_AT_KEEN - CLARITY_AT_DULL) * (sens / 100);
+
+const dbOf = (rms) => 20 * Math.log10(Math.max(rms, 1e-9));
+/** dBFS 를 막대 위의 0..100 % 위치로. */
+const meterPct = (rms) =>
+  clamp((dbOf(rms) - METER_MIN_DB) / (METER_MAX_DB - METER_MIN_DB), 0, 1) * 100;
+
 /* --------------------------------------------------------------- 상태 */
 
 const dom = {
   gate: el('gate'), startBtn: el('startBtn'), gateHint: el('gateHint'),
   installBtn: el('installBtn'), installChip: el('installChip'),
   app: el('app'), micBtn: el('micBtn'), micLabel: el('micLabel'),
-  lockBadge: el('lockBadge'), editBtn: el('editBtn'),
+  lockBadge: el('lockBadge'), editBtn: el('editBtn'), sensBtn: el('sensBtn'),
   noteBig: el('noteBig'), noteName: el('noteName'), noteOct: el('noteOct'),
   centsBar: el('centsBar'), centsText: el('centsText'), freqText: el('freqText'),
   history: el('history'), legend: el('legend'),
@@ -109,6 +128,9 @@ const dom = {
   fLow: el('fLow'), fHigh: el('fHigh'), fGuides: el('fGuides'), fClamp: el('fClamp'),
   captureBtn: el('captureBtn'), saveBtn: el('saveBtn'), deleteBtn: el('deleteBtn'),
   newBtn: el('newBtn'), savedList: el('savedList'),
+  sensSection: el('sensSection'), fSens: el('fSens'), sensValue: el('sensValue'),
+  sensThresh: el('sensThresh'), levelBar: el('levelBar'), levelMark: el('levelMark'),
+  levelText: el('levelText'),
 };
 
 let audioCtx = null;
@@ -125,6 +147,9 @@ let wakeLock = null;
 let installPrompt = null;
 
 const smoother = new Smoother();
+let sensitivity = loadSensitivity();
+const gate = { rms: rmsMinFor(sensitivity), clarity: clarityMinFor(sensitivity) };
+let inputLevel = 0;         // 표시용으로 다듬은 입력 크기(RMS)
 let lastGoodAt = 0;
 let heldNote = null;
 let heldSince = 0;
@@ -176,6 +201,7 @@ async function start() {
     fmin: DETECT_MIN,
     fmax: DETECT_MAX,
     bufferSize: BUFFER_SIZE,
+    clarityThreshold: gate.clarity,
   });
   sampleBuffer = new Float32Array(BUFFER_SIZE);
 
@@ -213,6 +239,7 @@ function setListening(on) {
     if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
     if (audioCtx && audioCtx.state === 'running') audioCtx.suspend();
     smoother.reset();
+    updateLevel(0);
     showIdle();
     releaseWakeLock();
   }
@@ -227,7 +254,9 @@ function loop(timestamp) {
   const result = detector.detect(sampleBuffer);
 
   let midi = null;
-  if (result && result.freq > 0 && result.clarity >= CLARITY_MIN && result.rms >= RMS_MIN) {
+  updateLevel(result ? result.rms : 0);
+
+  if (result && result.freq > 0 && result.clarity >= gate.clarity && result.rms >= gate.rms) {
     const raw = freqToMidi(result.freq);
     // 사람 음역 밖은 들려도 무시한다. 기준 음역대를 정해 뒀으면 그 밖도 소음으로 본다.
     const limit = clampRange();
@@ -290,6 +319,44 @@ function onNoteAchieved(note) {
     }
     renderEditor();
   }
+}
+
+/* --------------------------------------------------------------- 감도 */
+
+/**
+ * 감도를 적용한다. 실행 중에 불러도 되고, 다음 프레임부터 바로 새 문턱이 쓰인다.
+ * 검출기 안쪽 문턱도 같이 옮긴다. 거기서 먼저 버려지면 앱 쪽 검사는 볼 기회조차 없다.
+ */
+function applySensitivity(value, { persist = true } = {}) {
+  sensitivity = clamp(Math.round(value), 0, 100);
+  gate.rms = rmsMinFor(sensitivity);
+  gate.clarity = clarityMinFor(sensitivity);
+  if (detector) detector.clarityThreshold = gate.clarity;
+  if (persist) saveSensitivity(sensitivity);
+  renderSensitivity();
+}
+
+function renderSensitivity() {
+  if (dom.fSens.value !== String(sensitivity)) dom.fSens.value = String(sensitivity);
+  dom.sensValue.textContent = String(sensitivity);
+  // 기본값에서 벗어나 있을 때만 머리말 칩에 숫자를 붙인다. 손댄 적이 있다는 표시다.
+  dom.sensBtn.textContent = sensitivity === DEFAULT_SENSITIVITY ? '감도' : `감도 ${sensitivity}`;
+  dom.sensThresh.textContent = `문턱 ${Math.round(dbOf(gate.rms))} dB`;
+  dom.levelMark.style.left = meterPct(gate.rms) + '%';
+  renderLevel();
+}
+
+/** 올라갈 때는 그대로, 내려갈 때는 천천히. 순간적인 세기를 눈으로 따라갈 수 있게 한다. */
+function updateLevel(rms) {
+  inputLevel = rms > inputLevel ? rms : inputLevel * 0.82 + rms * 0.18;
+  if (!dom.sheet.hidden) renderLevel();
+}
+
+function renderLevel() {
+  dom.levelBar.style.width = meterPct(inputLevel) + '%';
+  dom.levelBar.classList.toggle('over', inputLevel >= gate.rms);
+  dom.levelText.textContent =
+    inputLevel > 1e-5 ? `지금 ${Math.round(dbOf(inputLevel))} dB` : '지금 —';
 }
 
 /* ------------------------------------------------------------ 화면 표시 */
@@ -373,7 +440,7 @@ function escapeHtml(text) {
 
 /* --------------------------------------------------------------- 편집 */
 
-function openSheet(entry) {
+function openSheet(entry, { scrollTo = null } = {}) {
   const fallback = currentMidi !== null ? Math.round(currentMidi) : 60;
   editing = entry
     ? { id: entry.id, name: entry.name, low: entry.low, high: entry.high }
@@ -382,7 +449,12 @@ function openSheet(entry) {
   captureFresh = false;
   dom.sheet.hidden = false;
   renderEditor();
+  renderSensitivity();
   renderSavedList();
+  if (scrollTo === 'sens') {
+    // 시트가 열린 뒤에 옮겨야 스크롤 위치가 잡힌다.
+    requestAnimationFrame(() => dom.sensSection.scrollIntoView({ block: 'start' }));
+  }
 }
 
 function closeSheet() {
@@ -498,6 +570,7 @@ function releaseWakeLock() {
 dom.startBtn.addEventListener('click', start);
 dom.micBtn.addEventListener('click', () => setListening(!listening));
 dom.editBtn.addEventListener('click', () => openSheet(null));
+dom.sensBtn.addEventListener('click', () => openSheet(null, { scrollTo: 'sens' }));
 dom.newBtn.addEventListener('click', () => openSheet(null));
 dom.saveBtn.addEventListener('click', saveEditing);
 dom.deleteBtn.addEventListener('click', deleteEditing);
@@ -512,6 +585,14 @@ dom.fClamp.addEventListener('change', () => {
   saveClampId(clampId);
   refreshChartData();
   renderLegend();
+});
+
+// 끄는 동안 계속 반영하되, 저장은 손을 뗄 때 한 번만 한다.
+dom.fSens.addEventListener('input', () => {
+  applySensitivity(Number(dom.fSens.value), { persist: false });
+});
+dom.fSens.addEventListener('change', () => {
+  applySensitivity(Number(dom.fSens.value));
 });
 
 dom.fGuides.addEventListener('change', () => {
@@ -708,6 +789,9 @@ window.addEventListener('appinstalled', () => {
   dom.installBtn.hidden = true;
   dom.installChip.hidden = true;
 });
+
+// 저장해 둔 감도를 화면에 반영한다. 문턱 자체는 로드할 때 이미 잡혀 있다.
+renderSensitivity();
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {

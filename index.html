@@ -37,6 +37,7 @@
     </button>
     <div class="spacer"></div>
     <button id="installChip" class="icon" hidden>설치</button>
+    <button id="sensBtn" class="icon">감도</button>
     <span id="lockBadge" class="badge" hidden>화면 유지</span>
     <button id="editBtn" class="icon">편집</button>
   </header>
@@ -106,6 +107,26 @@
       <input id="fClamp" type="checkbox">
       <span>이 음역대를 기준으로 삼고, 벗어난 소리는 무시</span>
     </label>
+
+    <div class="section-label" id="sensSection">감도</div>
+
+    <div class="range-field">
+      <div class="range-head">
+        <span>작은 소리도 잡기</span>
+        <b id="sensValue">50</b>
+      </div>
+      <input id="fSens" type="range" min="0" max="100" step="1" value="50" aria-label="감도">
+      <div id="levelMeter" role="img" aria-label="입력 크기와 문턱">
+        <div id="levelBar"></div>
+        <div id="levelMark"></div>
+      </div>
+      <div class="range-readout">
+        <span id="sensThresh">문턱 —</span>
+        <span id="levelText">—</span>
+      </div>
+      <p class="hint">막대가 눈금을 넘는 소리만 음으로 잡습니다. 감도를 올리면 작게 불러도
+        잡히지만 주변 소음도 함께 들어옵니다.</p>
+    </div>
 
     <div class="section-label">표시</div>
 

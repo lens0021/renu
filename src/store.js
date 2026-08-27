@@ -4,7 +4,10 @@ const SINGERS_KEY = 'renu.singers.v1';
 const GUIDES_KEY = 'renu.guides.v1';
 const CLAMP_KEY = 'renu.clamp.v1';
 const VIEW_KEY = 'renu.view.v1';
+const SENS_KEY = 'renu.sens.v1';
 const SEEDED_KEY = 'renu.seeded.v1';
+
+export const DEFAULT_SENSITIVITY = 50;
 
 export const LANE_COLORS = ['#6aa6ff', '#ffb84d', '#c98cff', '#ff7fa8', '#5fd8d8', '#9ad25f'];
 
@@ -73,6 +76,20 @@ export function loadClampId() {
 
 export function saveClampId(id) {
   write(CLAMP_KEY, id || null);
+}
+
+/**
+ * 검출 감도. 0 이 가장 둔감(큰 소리만), 100 이 가장 예민(작은 소리도)하고
+ * 기본값 50 은 예전에 상수로 박혀 있던 문턱과 같다.
+ */
+export function loadSensitivity() {
+  const value = read(SENS_KEY, null);
+  if (!Number.isFinite(value)) return DEFAULT_SENSITIVITY;
+  return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+export function saveSensitivity(value) {
+  write(SENS_KEY, value);
 }
 
 /** 차트에서 보고 있던 범위. { seconds, low, high } 이고 없으면 null. */
