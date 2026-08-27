@@ -14,6 +14,10 @@ const RANGE_LOW = 36;   // C2
 const RANGE_HIGH = 84;  // C6
 const PAD = 0.5;
 
+// 새로 만드는 음역대의 출발점. 여기서 반음씩 올리고 내려 맞춘다.
+const NEW_LOW = 48;     // C3
+const NEW_HIGH = 72;    // C5
+
 // 검출기는 더 넓게 본다. 3 kHz 까지 열어두면 고음 잡음의 정수분의 1 을 사람 음역 안의
 // 음으로 착각하는 일이 없어진다. 잡은 뒤 음역 밖은 버린다.
 const DETECT_MIN = 55;
@@ -126,7 +130,7 @@ const dom = {
   history: el('history'), legend: el('legend'),
   sheet: el('sheet'), sheetTitle: el('sheetTitle'), fName: el('fName'),
   fLow: el('fLow'), fHigh: el('fHigh'), fGuides: el('fGuides'), fClamp: el('fClamp'),
-  captureBtn: el('captureBtn'), saveBtn: el('saveBtn'), deleteBtn: el('deleteBtn'),
+  saveBtn: el('saveBtn'), deleteBtn: el('deleteBtn'),
   newBtn: el('newBtn'), savedList: el('savedList'), sortHint: el('sortHint'),
   sensSection: el('sensSection'), fSens: el('fSens'), sensValue: el('sensValue'),
   sensThresh: el('sensThresh'), levelBar: el('levelBar'), levelMark: el('levelMark'),
@@ -159,11 +163,8 @@ let singers = loadSingers();
 let showGuides = loadShowGuides();
 let clampId = loadClampId();
 let currentRange = { low: null, high: null };   // 이번에 켜 둔 동안 실제로 낸 음역
-let currentMidi = null;                         // 지금 들리는 음(소수점 MIDI) 또는 null
 
 let editing = null;
-let capturing = false;
-let captureFresh = false;
 
 /* --------------------------------------------------------------- 오디오 */
 
@@ -277,7 +278,6 @@ function loop(timestamp) {
   } else {
     lastGoodAt = now;
     const smoothed = smoother.push(midi);
-    currentMidi = smoothed;
     chart.push(smoothed);
     showNote(smoothed, result.freq);
     trackHold(smoothed, now);
@@ -306,18 +306,6 @@ function onNoteAchieved(note) {
   if (changed) {
     refreshChartData();
     renderLegend();
-  }
-
-  if (capturing && editing) {
-    if (captureFresh) {
-      editing.low = note;
-      editing.high = note;
-      captureFresh = false;
-    } else {
-      editing.low = Math.min(editing.low, note);
-      editing.high = Math.max(editing.high, note);
-    }
-    renderEditor();
   }
 }
 
@@ -364,7 +352,6 @@ function renderLevel() {
 /* ------------------------------------------------------------ 화면 표시 */
 
 function showIdle() {
-  currentMidi = null;
   if (displayedNote === null) return;
   displayedNote = null;
   dom.noteBig.classList.add('idle');
@@ -443,12 +430,9 @@ function escapeHtml(text) {
 /* --------------------------------------------------------------- 편집 */
 
 function openSheet(entry, { scrollTo = null } = {}) {
-  const fallback = currentMidi !== null ? Math.round(currentMidi) : 60;
   editing = entry
     ? { id: entry.id, name: entry.name, low: entry.low, high: entry.high }
-    : { id: null, name: '', low: fallback, high: fallback };
-  capturing = false;
-  captureFresh = false;
+    : { id: null, name: '', low: NEW_LOW, high: NEW_HIGH };
   dom.sheet.hidden = false;
   renderEditor();
   renderSensitivity();
@@ -462,7 +446,6 @@ function openSheet(entry, { scrollTo = null } = {}) {
 function closeSheet() {
   dom.sheet.hidden = true;
   editing = null;
-  capturing = false;
 }
 
 function renderEditor() {
@@ -472,8 +455,6 @@ function renderEditor() {
   dom.fLow.textContent = noteLabel(editing.low);
   dom.fHigh.textContent = noteLabel(editing.high);
   dom.deleteBtn.hidden = !editing.id;
-  dom.captureBtn.textContent = capturing ? '잡는 중 · 멈추기' : '노래해서 잡기';
-  dom.captureBtn.classList.toggle('on', capturing);
   dom.fGuides.checked = showGuides;
   dom.fClamp.checked = !!editing.id && clampId === editing.id;
 }
@@ -691,7 +672,7 @@ dom.fGuides.addEventListener('change', () => {
 });
 
 dom.sheet.addEventListener('click', (event) => {
-  const target = event.target.closest('[data-close], [data-step], [data-now], [data-edit]');
+  const target = event.target.closest('[data-close], [data-step], [data-edit]');
   if (!target) return;
 
   if (target.hasAttribute('data-close')) return closeSheet();
@@ -699,12 +680,6 @@ dom.sheet.addEventListener('click', (event) => {
   if (target.dataset.step) {
     const [which, delta] = target.dataset.step.split(':');
     return stepNote(which, Number(delta));
-  }
-
-  if (target.dataset.now) {
-    if (currentMidi === null || !editing) return;
-    const which = target.dataset.now;
-    return stepNote(which, Math.round(currentMidi) - editing[which]);
   }
 
   if (target.dataset.edit) {
@@ -750,13 +725,6 @@ dom.savedList.addEventListener('keydown', (event) => {
   moveSinger(from, from + delta);
   const next = dom.savedList.querySelector(`[data-handle="${id}"]`);
   if (next) next.focus();
-});
-
-dom.captureBtn.addEventListener('click', () => {
-  capturing = !capturing;
-  captureFresh = capturing;
-  if (capturing && !listening) setListening(true);
-  renderEditor();
 });
 
 dom.legend.addEventListener('click', (event) => {

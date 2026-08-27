@@ -111,8 +111,6 @@ button {
   font-size: 14px;
 }
 .ghost.small { padding: 7px 11px; font-size: 13px; }
-.ghost.wide { display: block; width: 100%; text-align: center; }
-.ghost.on { border-color: var(--accent); color: var(--accent); }
 .danger { padding: 13px 18px; border-radius: 12px; border: 1px solid #3a1c1a; color: var(--danger); }
 
 .hint { color: var(--text-faint); font-size: 12px; line-height: 1.6; margin: 14px 0 0; }
@@ -312,13 +310,10 @@ header > .icon, header > .badge { flex: none; }
   justify-content: space-between;
   border: 1px solid var(--line);
   border-radius: 10px;
-  margin-bottom: 8px;
 }
 .stepper button { width: 42px; height: 44px; font-size: 19px; color: var(--text-dim); }
 .stepper b { font-size: 19px; font-weight: 500; font-variant-numeric: tabular-nums; }
-.note-field .ghost { width: 100%; }
 
-#captureHint { margin-bottom: 20px; }
 .sheet-actions { display: flex; gap: 10px; }
 .sheet-actions .primary { flex: 1; }
 
