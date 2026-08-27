@@ -21,7 +21,20 @@
   --axis-w: 40px;
 }
 
-* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  /* 안드로이드에서 길게 누르면 글자가 선택되고 메뉴가 뜬다. 앱처럼 쓰는 화면이라 막는다. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* 입력란은 당연히 선택과 편집이 되어야 한다 */
+input, textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
 
 /* CSS 의 display 가 hidden 속성을 덮지 않도록 한다 */
 [hidden] { display: none !important; }
@@ -33,7 +46,8 @@ html, body {
   color: var(--text);
   font-family: system-ui, -apple-system, "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
   overscroll-behavior: none;
-  touch-action: manipulation;
+  /* 브라우저 기본 핀치 확대와 더블탭 확대를 끈다. 핀치는 차트가 직접 받는다. */
+  touch-action: none;
 }
 
 body {
@@ -195,7 +209,7 @@ header {
   min-height: 0;
   border-top: 1px solid var(--line-soft);
 }
-#history { display: block; width: 100%; height: 100%; }
+#history { display: block; width: 100%; height: 100%; touch-action: none; }
 
 #legend {
   flex: none;
@@ -205,6 +219,7 @@ header {
   scrollbar-width: none;
   padding: 8px 12px calc(10px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--line-soft);
+  touch-action: pan-x;
 }
 #legend::-webkit-scrollbar { display: none; }
 #legend button {
@@ -231,6 +246,7 @@ header {
   width: 100%;
   max-height: 88vh;
   overflow-y: auto;
+  touch-action: pan-y;
   background: var(--surface);
   border-top: 1px solid var(--line);
   border-radius: 18px 18px 0 0;

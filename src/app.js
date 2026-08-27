@@ -3,7 +3,7 @@ import { HistoryChart } from './chart.js';
 import { freqToMidi, noteLabel, splitNote } from './notes.js';
 import {
   loadSingers, saveSingers, loadShowGuides, saveShowGuides,
-  loadClampId, saveClampId, newId, colorFor,
+  loadClampId, saveClampId, loadView, saveView, newId, colorFor,
 } from './store.js';
 
 /* ------------------------------------------------------------------ 상수 */
@@ -188,6 +188,9 @@ async function start() {
     seconds: HISTORY_SECONDS,
     updateMs: UPDATE_MS,
   });
+  const savedView = loadView();
+  if (savedView) chart.setView(savedView);
+
   refreshChartData();
   renderLegend();
   // 첫 레이아웃이 끝난 뒤 한 번 더 재보정한다. 생성 시점에는 크기가 0 일 수 있다.
@@ -568,6 +571,103 @@ window.addEventListener('resize', () => {
   chart.resize();
   chart.draw();
 });
+
+/* ------------------------------------------------------- 차트 핀치 확대 */
+
+// 브라우저가 페이지 전체를 확대하지 못하게 막는다. touch-action 만으로는
+// 사파리의 제스처 이벤트가 남아서 따로 취소해야 한다.
+for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+  document.addEventListener(type, (event) => event.preventDefault());
+}
+
+// 길게 누를 때 뜨는 컨텍스트 메뉴도 막는다. 입력란에서는 남겨 둔다.
+document.addEventListener('contextmenu', (event) => {
+  if (event.target.closest('input, textarea')) return;
+  event.preventDefault();
+});
+
+const pinch = { pointers: new Map(), origin: null, lastTap: 0, lastTapAt: null };
+
+function chartPoint(event) {
+  const rect = dom.history.getBoundingClientRect();
+  return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+}
+
+dom.history.addEventListener('pointerdown', (event) => {
+  if (!chart) return;
+  // 캡처는 손가락이 캔버스 밖으로 나가도 제스처를 놓치지 않게 해 준다.
+  // 붙잡을 수 없는 포인터면 그냥 넘어간다.
+  try { dom.history.setPointerCapture(event.pointerId); } catch { /* 무시 */ }
+  pinch.pointers.set(event.pointerId, chartPoint(event));
+  if (pinch.pointers.size === 2) beginPinch();
+});
+
+dom.history.addEventListener('pointermove', (event) => {
+  if (!pinch.pointers.has(event.pointerId)) return;
+  pinch.pointers.set(event.pointerId, chartPoint(event));
+  if (pinch.pointers.size === 2 && pinch.origin) {
+    event.preventDefault();
+    updatePinch();
+  }
+});
+
+for (const type of ['pointerup', 'pointercancel', 'pointerleave']) {
+  dom.history.addEventListener(type, (event) => {
+    if (!pinch.pointers.delete(event.pointerId)) return;
+    if (pinch.pointers.size < 2 && pinch.origin) {
+      pinch.origin = null;
+      saveView(chart.getView());
+    }
+    if (type === 'pointerup' && pinch.pointers.size === 0) handleTap(event);
+  });
+}
+
+function beginPinch() {
+  const [a, b] = [...pinch.pointers.values()];
+  const centerY = (a.y + b.y) / 2;
+  const view = chart.getView();
+  pinch.origin = {
+    dx: Math.abs(a.x - b.x),
+    dy: Math.abs(a.y - b.y),
+    seconds: view.seconds,
+    span: view.high - view.low,
+    anchorMidi: chart.midiAtY(centerY),
+  };
+}
+
+function updatePinch() {
+  const origin = pinch.origin;
+  const [a, b] = [...pinch.pointers.values()];
+  const dx = Math.abs(a.x - b.x);
+  const dy = Math.abs(a.y - b.y);
+
+  // 한 축으로 나란히 잡은 손가락은 그 축의 배율을 신뢰할 수 없다. 가로로 벌리면
+  // 시간축만, 세로로 벌리면 음역만 움직이도록 최소 간격을 둔다.
+  if (origin.dx > 24 && dx > 8) chart.setSeconds(origin.seconds * (origin.dx / dx));
+  if (origin.dy > 24 && dy > 8) {
+    chart.setSpanAround(origin.span * (origin.dy / dy), origin.anchorMidi, (a.y + b.y) / 2);
+  }
+  chart.draw();
+}
+
+/** 두 번 두드리면 원래 보기로 돌아간다. */
+function handleTap(event) {
+  const now = performance.now();
+  const point = chartPoint(event);
+  const near = pinch.lastTapAt
+    && Math.hypot(point.x - pinch.lastTapAt.x, point.y - pinch.lastTapAt.y) < 30;
+
+  if (near && now - pinch.lastTap < 320) {
+    chart.resetView(HISTORY_SECONDS);
+    chart.draw();
+    saveView(chart.getView());
+    pinch.lastTap = 0;
+    pinch.lastTapAt = null;
+    return;
+  }
+  pinch.lastTap = now;
+  pinch.lastTapAt = point;
+}
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {

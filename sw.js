@@ -3,7 +3,7 @@
  * 전략은 stale-while-revalidate 다. 즉시 캐시로 응답하고 뒤에서 새 버전을 받아둔다.
  */
 
-const VERSION = 'renu-v3';
+const VERSION = 'renu-v4';
 const SHELL = [
   './',
   './index.html',

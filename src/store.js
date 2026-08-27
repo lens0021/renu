@@ -3,6 +3,7 @@
 const SINGERS_KEY = 'renu.singers.v1';
 const GUIDES_KEY = 'renu.guides.v1';
 const CLAMP_KEY = 'renu.clamp.v1';
+const VIEW_KEY = 'renu.view.v1';
 const SEEDED_KEY = 'renu.seeded.v1';
 
 export const LANE_COLORS = ['#6aa6ff', '#ffb84d', '#c98cff', '#ff7fa8', '#5fd8d8', '#9ad25f'];
@@ -72,6 +73,20 @@ export function loadClampId() {
 
 export function saveClampId(id) {
   write(CLAMP_KEY, id || null);
+}
+
+/** 차트에서 보고 있던 범위. { seconds, low, high } 이고 없으면 null. */
+export function loadView() {
+  const view = read(VIEW_KEY, null);
+  if (!view) return null;
+  const ok = Number.isFinite(view.seconds)
+    && Number.isFinite(view.low) && Number.isFinite(view.high)
+    && view.high > view.low;
+  return ok ? view : null;
+}
+
+export function saveView(view) {
+  write(VIEW_KEY, view);
 }
 
 export function colorFor(index) {
